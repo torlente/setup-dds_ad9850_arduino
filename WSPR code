@@ -1,0 +1,93 @@
+// 
+// Codigo para transmision de WSPR con arduino uno y ad9850 por Niceto Muñoz, EA5EHS.
+// parte del código está tomado de otros como http://nr8o.dhlpilotcentral.com/?p=83 (cálculo de frecuencia y transmision) NR8O,
+// Generación de WSPR a partir de la salida del programa wsprdata.exe http://www.george-smart.co.uk/wiki/Arduino_WSPR   M1GE
+//
+
+ #define W_CLK 8       // Pin 8 - connect to AD9850 module word load clock pin (CLK)
+ #define FQ_UD 9       // Pin 9 - connect to freq update pin (FQ)
+ #define DATA 10       // Pin 10 - connect to serial data load pin (DATA)
+ #define RESET 11      // Pin 11 - connect to reset pin (RST).
+ 
+ #define pulseHigh(pin) {digitalWrite(pin, HIGH); digitalWrite(pin, LOW); }
+ #define FREQUENCY 14097000 //wspr corregida
+ #define FREQUENCY2 14096100 //wspr corregida
+ #define WAIT 9250//Tiempo de espera en ms, para que comience en nuevo ciclo de transmision.
+//cadena obtenida con generador fortran wsprdata.exe. en este caso. Precaución!! podeis separarlo en varias líneas, pero cada una debe terminar siempre en la coma, nunca en número
+
+
+byte WSPR_DATA[] = {1,1,0,0,0,0,0,2,1,2,0,2,3,1,3,0,2,2,3,2,0,1,0,1,1,3,3,2,2,2,2,0,2,2,3,0,0,1,0,1,
+0,2,0,2,2,2,1,2,1,3,2,2,1,3,0,3,0,2,0,3,1,0,3,2,2,0,2,3,1,0,
+1,2,1,2,1,0,3,2,0,1,0,2,3,2,1,1,0,2,2,3,3,0,3,2,1,2,0,0,1,2,
+0,0,2,0,3,0,0,3,2,0,1,1,1,2,3,1,2,2,3,3,0,1,2,0,2,1,1,3,0,0,
+0,2,0,1,2,3,0,0,1,3,2,0,0,0,2,0,2,1,3,0,1,0,3,3,2,2,0,1,1,2,2,2,};
+
+void tfr_byte(byte data)
+{
+  for (int i=0; i<8; i++, data>>=1) {
+    digitalWrite(DATA, data & 0x01);
+    pulseHigh(W_CLK);   //after each bit sent, CLK is pulsed high
+  }
+}
+ // frequency calc from datasheet page 8 = <sys clock> * <frequency tuning word>/2^32
+void sendFrequency(double frequency) {
+  int32_t freq = frequency * 4294967295/125000000;  // note 125 MHz clock on 9850
+  for (int b=0; b<4; b++, freq>>=8) {
+    tfr_byte(freq & 0xFF);
+  }
+  tfr_byte(0x000);   // Final control byte, all 0 for 9850 chip
+  pulseHigh(FQ_UD);  // Done!  Should see output
+}
+
+void wsprTXtone(int t) {
+  if ((t >= 0) && (t <= 3) ) {
+    sendFrequency((FREQUENCY + (t * 1.4648)));
+  }
+}
+
+void wsprTXtone2(int t) {
+  if ((t >= 0) && (t <= 3) ) {
+    sendFrequency((FREQUENCY2 + (t * 1.4648)));
+  }
+}
+
+
+
+void wsprTX() {
+  int i = 0;
+  for (i=0;i<162;i++) {
+    wsprTXtone( WSPR_DATA[i] );
+    delay(683);
+  }
+  sendFrequency(0);
+}
+
+void wsprTX2() {
+  int i = 0;
+  for (i=0;i<162;i++) {
+    wsprTXtone2( WSPR_DATA[i] );
+    delay(683);
+  }
+  sendFrequency(0);
+}
+
+void setup() {
+ // configure arduino data pins for output
+  pinMode(FQ_UD, OUTPUT);
+  pinMode(W_CLK, OUTPUT);
+  pinMode(DATA, OUTPUT);
+  pinMode(RESET, OUTPUT);
+   
+  pulseHigh(RESET);
+  pulseHigh(W_CLK);
+  pulseHigh(FQ_UD);  // this pulse enables serial mode - Datasheet page 12 figure 10
+}
+
+
+// no es muy elegante, pero he creado dos funciones iguales para transmitir alternando dos bandas (40 y 80m en este caso). Cuando tenga terminado, mejoraré el código y lo comentaré mejor
+void loop() {
+ wsprTX();
+ delay (WAIT);
+ wsprTX2();
+ delay (WAIT);
+}
